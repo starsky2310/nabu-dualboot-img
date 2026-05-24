@@ -114,18 +114,3 @@ jobs:
           name: installer_${{ matrix.dualboot-type }}_${{ matrix.uefi-type }}.zip
           path: |
             Flashable_UEFI_Installer/installer_${{ matrix.dualboot-type }}_${{ matrix.uefi-type }}.zip
-      - name: Release assets
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.time.outputs.time }}
-          target_commitish: ${{ github.sha }}
-          name: DualBoot UEFI Installer (${{ steps.time.outputs.time }})
-          body_path: README.md
-          draft: false
-          prerelease: false
-          files: |
-            Flashable_UEFI_Installer/installer_${{ matrix.dualboot-type }}_${{ matrix.uefi-type }}.zip
-
