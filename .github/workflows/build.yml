@@ -23,10 +23,18 @@ jobs:
           cd secureboot
           python secure_boot_default_keys.py --keystore keystore.toml -o Artifacts
           python generate_dsc.py Artifacts/Aarch64/
+          
+      # 【修改项 1】导出完整的密钥文件夹（包含 db.key 和 db.crt 供你本地签名使用）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SecureBootKeys_All_Keys
+          path: secureboot/Artifacts/
+
+      # 【修改项 2】保持原有的单文件导出，确保下游 build-uefi 任务不会因找不到文件而报错
       - uses: actions/upload-artifact@v4
         with:
           name: SecureBootKeys.dsc.inc
-          path: secureboot/Artifacts/
+          path: secureboot/Artifacts/Aarch64/SecureBootKeys.dsc.inc
 
   build-uefi:
     needs: [prepare-sb-keys]
@@ -74,6 +82,7 @@ jobs:
           name: xiaomi-nabu_NOSB.img
           path: |
             xiaomi-nabu_NOSB.img
+            
   build-dbkp:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -97,6 +106,7 @@ jobs:
             DBKP/Build/DualBootKernelRemover
             DBKP/Build/ShellCode/*.bin
             DBKP/Config/*.cfg
+            
   build-installer:
     needs: [build-uefi, build-dbkp]
     strategy:
@@ -152,4 +162,3 @@ jobs:
           prerelease: false
           files: |
             Flashable_UEFI_Installer/installer_${{ matrix.dualboot-type }}_${{ matrix.uefi-type }}.zip
-
