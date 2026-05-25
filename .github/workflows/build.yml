@@ -4,64 +4,40 @@ on:
   push:
   workflow_dispatch:
 
-# Indicate that we are running in CI
+# 指明运行在 CI 环境中
 env:
   WM_CI_BUILD: true
 
 jobs:
-  prepare-sb-keys:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.12
-      - run: |
-          python -m pip install --upgrade pip
-          pip install edk2-pytool-library==0.22.3
-          pip install edk2-pytool-extensions==0.28.0
-          cd secureboot
-          python secure_boot_default_keys.py --keystore keystore.toml -o Artifacts
-          python generate_dsc.py Artifacts/Aarch64/
-          
-      # 【修改项 1】导出完整的密钥文件夹（包含 db.key 和 db.crt 供你本地签名使用）
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SecureBootKeys_All_Keys
-          path: secureboot/Artifacts/
-
-      # 【修改项 2】保持原有的单文件导出，确保下游 build-uefi 任务不会因找不到文件而报错
-      - uses: actions/upload-artifact@v4
-        with:
-          name: SecureBootKeys.dsc.inc
-          path: secureboot/Artifacts/Aarch64/SecureBootKeys.dsc.inc
-
   build-uefi:
-    needs: [prepare-sb-keys]
+    # 移除了 needs: [prepare-sb-keys]，使该任务可以独立且立刻开始运行
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # 此时拉取的仓库中已经包含了你本地提交的密钥
+      
       - uses: actions/checkout@v4
         with:
           repository: Project-Aloha/mu_aloha_platforms
           ref: main
           path: MU
-      - uses: actions/download-artifact@v4
-        with:
-          name: SecureBootKeys.dsc.inc
+          
       - name: Build UEFI
         run: |
           cd MU
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git submodule update --init --recursive
-          cp ../SecureBootKeys.dsc.inc Platforms/AndromedaPkg/SecureBootKeys.dsc.inc
+          
+          # 【关键修改】不再使用 ../ 寻找下载的产物，而是直接复制你存放在仓库 secureboot/Artifacts/Aarch64/ 目录下的静态密钥文件
+          cp ../secureboot/Artifacts/Aarch64/SecureBootKeys.dsc.inc Platforms/AndromedaPkg/SecureBootKeys.dsc.inc
+          
           sed -i '/"Kernel"/s/Conv/Reserv/' Platforms/SurfaceDuo1Pkg/Device/xiaomi-nabu/Library/PlatformMemoryMapLib/PlatformMemoryMapLib.c
           bash scripts/ci_setup.sh && ./build_uefi.py -d xiaomi-nabu
           find Build/*/ci_artifacts/ -type f -name 'SM8150_EFI_SB.fd' -exec cp '{}' ../SM8150_EFI_SB.fd ';'
           find Build/*/ci_artifacts/ -type f -name 'xiaomi-nabu_SB.img' -exec cp '{}' ../xiaomi-nabu_SB.img ';'
           find Build/*/ci_artifacts/ -type f -name 'SM8150_EFI_NOSB.fd' -exec cp '{}' ../SM8150_EFI_NOSB.fd ';'
           find Build/*/ci_artifacts/ -type f -name 'xiaomi-nabu_NOSB.img' -exec cp '{}' ../xiaomi-nabu_NOSB.img ';'
+          
       - uses: actions/upload-artifact@v4
         with:
           name: SM8150_EFI_SB.fd
@@ -82,7 +58,7 @@ jobs:
           name: xiaomi-nabu_NOSB.img
           path: |
             xiaomi-nabu_NOSB.img
-            
+
   build-dbkp:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -106,7 +82,7 @@ jobs:
             DBKP/Build/DualBootKernelRemover
             DBKP/Build/ShellCode/*.bin
             DBKP/Config/*.cfg
-            
+
   build-installer:
     needs: [build-uefi, build-dbkp]
     strategy:
